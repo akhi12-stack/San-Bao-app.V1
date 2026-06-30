@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 
 const SUPABASE_URL = "https://uoaacuxktqotjhukxdvu.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVvYWFjdXhrdHFvdGpodWt4ZHZ1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIxNTYwMDcsImV4cCI6MjA5NzczMjAwN30.ZmAHM--oBVa3pQC3mfIjStjzxwJWCRx19LdZx6RZFTw";
@@ -30,13 +30,17 @@ const C = {
   youssef: "#2196F3", youssefBg: "#2196F318", youssefBorder: "#2196F344",
 };
 
+// ── TARIFICATIONS ──
 const TARIFS = [
   { id: "bilan_adulte", label: "Consultation Bilan / Séance adulte", prix: 500 },
   { id: "suivi_adulte", label: "Consultation Suivi adulte", prix: 400 },
+  { id: "suivi_adulte_2", label: "Suivi adulte 2", prix: 200 },
+  { id: "suivi_adulte_3", label: "Suivi adulte 3", prix: 300 },
   { id: "bilan_enfant", label: "Consultation Bilan / Séance enfant", prix: 300 },
   { id: "suivi_enfant", label: "Consultation Suivi enfant", prix: 200 },
   { id: "douleur", label: "Consultation Douleur", prix: 400 },
   { id: "addictologie", label: "Consultation Addictologie", prix: 600 },
+  { id: "plaza_toro", label: "Patient Plaza Toro", prix: 300 },
 ];
 
 const CHARGES = [
@@ -54,18 +58,27 @@ const MEDECINS = [
 
 const getMedecin = (id) => MEDECINS.find(m => m.id === id) || MEDECINS[0];
 const getTarif = (id) => TARIFS.find(t => t.id === id) || TARIFS[0];
-const today = () => new Date().toISOString().split("T")[0];
-const formatDate = (d) => new Date(d + "T00:00:00").toLocaleDateString("fr-FR", { weekday: "short", day: "2-digit", month: "short" });
+
+// ── DATE HELPERS (tout en local, zéro conversion UTC pour éviter le décalage de jour) ──
+const pad = (n) => String(n).padStart(2, "0");
+const toISO = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+const fromISO = (s) => { const [y, m, d] = s.split("-").map(Number); return new Date(y, m - 1, d); };
+const today = () => toISO(new Date());
+const formatDate = (d) => fromISO(d).toLocaleDateString("fr-FR", { weekday: "short", day: "2-digit", month: "short" });
 const formatMoney = (n) => `${n.toLocaleString("fr-MA")} Dh`;
-const getWeekRange = () => {
-  const now = new Date(); const day = now.getDay() || 7;
-  const monday = new Date(now); monday.setDate(now.getDate() - day + 1);
-  const sunday = new Date(monday); sunday.setDate(monday.getDate() + 6);
-  return { start: monday.toISOString().split("T")[0], end: sunday.toISOString().split("T")[0] };
+
+const getMonday = (iso) => {
+  const d = fromISO(iso);
+  const day = d.getDay() || 7; // dimanche = 7
+  d.setDate(d.getDate() - day + 1);
+  return toISO(d);
 };
+const addDays = (iso, n) => { const d = fromISO(iso); d.setDate(d.getDate() + n); return toISO(d); };
+
+const getWeekRange = () => { const m = getMonday(today()); return { start: m, end: addDays(m, 6) }; };
 const getMonthRange = () => {
-  const now = new Date();
-  return { start: new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split("T")[0], end: new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split("T")[0] };
+  const d = new Date();
+  return { start: toISO(new Date(d.getFullYear(), d.getMonth(), 1)), end: toISO(new Date(d.getFullYear(), d.getMonth() + 1, 0)) };
 };
 
 // ── UI primitives ──
@@ -112,7 +125,6 @@ const FormRdv = ({ initial, onSave, onCancel, loading }) => {
   const med = getMedecin(form.medecin);
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      {/* Médecin selector visuel */}
       <div>
         <label style={{ fontSize: 12, color: C.textMuted, fontWeight: 600, letterSpacing: 0.5, textTransform: "uppercase", display: "block", marginBottom: 8 }}>Médecin</label>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
@@ -149,7 +161,6 @@ const FormRdv = ({ initial, onSave, onCancel, loading }) => {
   );
 };
 
-// ── WhatsApp ──
 const openWhatsapp = (rdv) => {
   const tarif = getTarif(rdv.tarif);
   const med = getMedecin(rdv.medecin);
@@ -157,7 +168,6 @@ const openWhatsapp = (rdv) => {
   window.open(`https://wa.me/212${rdv.patientTel.replace(/^0/, "")}?text=${msg}`, "_blank");
 };
 
-// ── Card RDV ──
 const CardRdv = ({ rdv, onEdit, onDelete, deleting }) => {
   const tarif = getTarif(rdv.tarif);
   const med = getMedecin(rdv.medecin);
@@ -203,7 +213,6 @@ const Dashboard = ({ rdvs }) => {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 28 }}>
-      {/* Stats globales */}
       <div>
         <h2 style={{ color: C.text, margin: "0 0 14px", fontSize: 16, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1 }}>Vue globale</h2>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", gap: 12 }}>
@@ -217,7 +226,6 @@ const Dashboard = ({ rdvs }) => {
         </div>
       </div>
 
-      {/* Stats par médecin côte à côte */}
       <div>
         <h2 style={{ color: C.text, margin: "0 0 14px", fontSize: 16, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1 }}>Par médecin</h2>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
@@ -245,7 +253,6 @@ const Dashboard = ({ rdvs }) => {
         </div>
       </div>
 
-      {/* Prochains RDV */}
       <div>
         <h2 style={{ color: C.text, margin: "0 0 14px", fontSize: 16, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1 }}>Prochains rendez-vous</h2>
         {upcoming.length === 0
@@ -274,41 +281,32 @@ const Dashboard = ({ rdvs }) => {
   );
 };
 
-// ── AGENDA GRILLE ──
+// ── AGENDA GRILLE (corrigé : navigation libre dans le temps, pas de blocage) ──
 const AgendaGrille = ({ rdvs, onEdit, onDelete, deleting }) => {
-  const [semaine, setSemaine] = useState(today());
+  const [monday, setMonday] = useState(() => getMonday(today()));
   const [filtreMed, setFiltreMed] = useState("tous");
 
-  const getMonday = (dateStr) => {
-    const d = new Date(dateStr + "T00:00:00"); const day = d.getDay() || 7;
-    d.setDate(d.getDate() - day + 1); return d.toISOString().split("T")[0];
-  };
-  const monday = getMonday(semaine);
-  const jours = Array.from({ length: 7 }, (_, i) => {
-    const d = new Date(monday + "T00:00:00"); d.setDate(d.getDate() + i);
-    return d.toISOString().split("T")[0];
-  });
+  const jours = useMemo(() => Array.from({ length: 7 }, (_, i) => addDays(monday, i)), [monday]);
 
   const rdvDuJour = (date) => rdvs
     .filter(r => r.date === date && (filtreMed === "tous" || r.medecin === filtreMed))
     .sort((a, b) => a.heure.localeCompare(b.heure));
 
-  const prevSemaine = () => { const d = new Date(monday + "T00:00:00"); d.setDate(d.getDate() - 7); setSemaine(d.toISOString().split("T")[0]); };
-  const nextSemaine = () => { const d = new Date(monday + "T00:00:00"); d.setDate(d.getDate() + 7); setSemaine(d.toISOString().split("T")[0]); };
+  const prevSemaine = () => setMonday(addDays(monday, -7));
+  const nextSemaine = () => setMonday(addDays(monday, 7));
 
   const sendRappels = () => {
-    const demain = new Date(); demain.setDate(demain.getDate() + 1);
-    const d = demain.toISOString().split("T")[0];
+    const d = addDays(today(), 1);
     const liste = rdvs.filter(r => r.date === d && (filtreMed === "tous" || r.medecin === filtreMed));
     if (liste.length === 0) return alert("Aucun RDV demain.");
     liste.forEach((rdv, i) => setTimeout(() => openWhatsapp(rdv), i * 800));
   };
 
   const jourLabels = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"];
+  const t = today();
 
   return (
     <div>
-      {/* Légende couleurs */}
       <div style={{ display: "flex", gap: 20, marginBottom: 16, flexWrap: "wrap", alignItems: "center" }}>
         {MEDECINS.map(m => (
           <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 7 }}>
@@ -318,12 +316,11 @@ const AgendaGrille = ({ rdvs, onEdit, onDelete, deleting }) => {
         ))}
       </div>
 
-      {/* Contrôles */}
       <div style={{ display: "flex", gap: 10, marginBottom: 18, flexWrap: "wrap", alignItems: "flex-end" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, background: C.card, border: `1px solid ${C.border}`, borderRadius: 10, padding: "6px 12px" }}>
           <button onClick={prevSemaine} style={{ background: "none", border: "none", color: C.textMuted, cursor: "pointer", fontSize: 18, lineHeight: 1 }}>‹</button>
-          <span style={{ color: C.text, fontSize: 13, fontWeight: 600, minWidth: 140, textAlign: "center" }}>
-            {new Date(monday + "T00:00:00").toLocaleDateString("fr-FR", { day: "2-digit", month: "short" })} — {new Date(jours[6] + "T00:00:00").toLocaleDateString("fr-FR", { day: "2-digit", month: "short", year: "numeric" })}
+          <span style={{ color: C.text, fontSize: 13, fontWeight: 600, minWidth: 150, textAlign: "center" }}>
+            {fromISO(monday).toLocaleDateString("fr-FR", { day: "2-digit", month: "short" })} — {fromISO(jours[6]).toLocaleDateString("fr-FR", { day: "2-digit", month: "short", year: "numeric" })}
           </span>
           <button onClick={nextSemaine} style={{ background: "none", border: "none", color: C.textMuted, cursor: "pointer", fontSize: 18, lineHeight: 1 }}>›</button>
         </div>
@@ -332,24 +329,21 @@ const AgendaGrille = ({ rdvs, onEdit, onDelete, deleting }) => {
           {MEDECINS.map(m => <option key={m.id} value={m.id}>{m.nom}</option>)}
         </Sel>
         <Btn variant="whatsapp" onClick={sendRappels}>📲 Rappels demain</Btn>
-        <Btn variant="ghost" onClick={() => setSemaine(today())}>Aujourd'hui</Btn>
+        <Btn variant="ghost" onClick={() => setMonday(getMonday(today()))}>Aujourd'hui</Btn>
       </div>
 
-      {/* Grille */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 8 }}>
         {jours.map((date, i) => {
           const rdvList = rdvDuJour(date);
-          const isToday = date === today();
+          const isToday = date === t;
           return (
             <div key={date} style={{ minHeight: 140 }}>
-              {/* Header jour */}
               <div style={{ textAlign: "center", marginBottom: 8 }}>
                 <div style={{ color: C.textMuted, fontSize: 11, fontWeight: 600, textTransform: "uppercase" }}>{jourLabels[i]}</div>
                 <div style={{ width: 28, height: 28, borderRadius: "50%", background: isToday ? C.accent : "transparent", color: isToday ? "#0D1F1A" : C.text, fontWeight: 700, fontSize: 14, display: "flex", alignItems: "center", justifyContent: "center", margin: "4px auto 0" }}>
-                  {new Date(date + "T00:00:00").getDate()}
+                  {fromISO(date).getDate()}
                 </div>
               </div>
-              {/* RDV du jour */}
               <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
                 {rdvList.map(rdv => {
                   const med = getMedecin(rdv.medecin);
@@ -371,12 +365,13 @@ const AgendaGrille = ({ rdvs, onEdit, onDelete, deleting }) => {
         })}
       </div>
 
-      {/* Liste détaillée du jour sélectionné */}
       <div style={{ marginTop: 28 }}>
         <h3 style={{ color: C.text, margin: "0 0 14px", fontSize: 15, fontWeight: 700 }}>Détail — cliquez un RDV pour modifier</h3>
-        {rdvs.filter(r => jours.includes(r.date) && (filtreMed === "tous" || r.medecin === filtreMed)).sort((a, b) => (a.date + a.heure).localeCompare(b.date + b.heure)).map(rdv => (
-          <CardRdv key={rdv.id} rdv={rdv} onEdit={onEdit} onDelete={onDelete} deleting={deleting === rdv.id} />
-        )).reduce((acc, el, i) => [...acc, <div key={i} style={{ marginBottom: 10 }}>{el}</div>], [])}
+        {(() => {
+          const liste = rdvs.filter(r => jours.includes(r.date) && (filtreMed === "tous" || r.medecin === filtreMed)).sort((a, b) => (a.date + a.heure).localeCompare(b.date + b.heure));
+          if (liste.length === 0) return <div style={{ color: C.textMuted, padding: "20px 0" }}>Aucun RDV cette semaine.</div>;
+          return <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>{liste.map(rdv => <CardRdv key={rdv.id} rdv={rdv} onEdit={onEdit} onDelete={onDelete} deleting={deleting === rdv.id} />)}</div>;
+        })()}
       </div>
     </div>
   );
@@ -389,7 +384,7 @@ const ListePatients = ({ rdvs, onEdit, onDelete, deleting }) => {
   const filtered = rdvs.filter(r =>
     (r.patientNom.toLowerCase().includes(search.toLowerCase()) || r.patientTel.includes(search)) &&
     (filtreMed === "tous" || r.medecin === filtreMed)
-  ).sort((a, b) => b.date.localeCompare(a.date));
+  ).sort((a, b) => (b.date + b.heure).localeCompare(a.date + a.heure));
   return (
     <div>
       <div style={{ display: "flex", gap: 12, marginBottom: 20, flexWrap: "wrap" }}>
@@ -406,28 +401,33 @@ const ListePatients = ({ rdvs, onEdit, onDelete, deleting }) => {
   );
 };
 
-// ── FINANCES ──
+// ── FINANCES (corrigé : recalcul réactif via useMemo dépendant de rdvs/dates) ──
 const Finances = ({ rdvs }) => {
-  const { start: ms, end: me } = getMonthRange();
-  const [moisDebut, setMoisDebut] = useState(ms);
-  const [moisFin, setMoisFin] = useState(me);
+  const defaultRange = getMonthRange();
+  const [moisDebut, setMoisDebut] = useState(defaultRange.start);
+  const [moisFin, setMoisFin] = useState(defaultRange.end);
 
-  const filtered = rdvs.filter(r => r.date >= moisDebut && r.date <= moisFin);
+  const filtered = useMemo(
+    () => rdvs.filter(r => r.date >= moisDebut && r.date <= moisFin),
+    [rdvs, moisDebut, moisFin]
+  );
   const revenue = (list) => list.reduce((sum, r) => sum + (getTarif(r.tarif)?.prix || 0), 0);
-  const totalRevenu = revenue(filtered);
+  const totalRevenu = useMemo(() => revenue(filtered), [filtered]);
   const beneficeNet = totalRevenu - TOTAL_CHARGES;
 
-  const byTarif = TARIFS.map(t => ({ ...t, count: filtered.filter(r => r.tarif === t.id).length, total: filtered.filter(r => r.tarif === t.id).length * t.prix }));
+  const byTarif = useMemo(() => TARIFS.map(t => {
+    const list = filtered.filter(r => r.tarif === t.id);
+    return { ...t, count: list.length, total: list.length * t.prix };
+  }), [filtered]);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
-      {/* Filtres */}
       <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "flex-end" }}>
         <Input label="Du" type="date" value={moisDebut} onChange={e => setMoisDebut(e.target.value)} style={{ width: "auto" }} />
         <Input label="Au" type="date" value={moisFin} onChange={e => setMoisFin(e.target.value)} style={{ width: "auto" }} />
+        <Btn variant="ghost" onClick={() => { const r = getMonthRange(); setMoisDebut(r.start); setMoisFin(r.end); }}>Ce mois</Btn>
       </div>
 
-      {/* Résumé */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: 12 }}>
         <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 14, padding: "18px 20px" }}>
           <div style={{ color: C.textMuted, fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 8 }}>Chiffre d'affaires</div>
@@ -445,7 +445,6 @@ const Finances = ({ rdvs }) => {
         </div>
       </div>
 
-      {/* Par médecin */}
       <div>
         <h3 style={{ color: C.text, margin: "0 0 12px", fontSize: 15, fontWeight: 700 }}>Par médecin</h3>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
@@ -479,7 +478,6 @@ const Finances = ({ rdvs }) => {
         </div>
       </div>
 
-      {/* Détail charges */}
       <div>
         <h3 style={{ color: C.text, margin: "0 0 12px", fontSize: 15, fontWeight: 700 }}>Détail des charges mensuelles</h3>
         <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 14, overflow: "hidden" }}>
@@ -496,7 +494,6 @@ const Finances = ({ rdvs }) => {
         </div>
       </div>
 
-      {/* Détail par type de consultation */}
       <div>
         <h3 style={{ color: C.text, margin: "0 0 12px", fontSize: 15, fontWeight: 700 }}>Détail par type de consultation</h3>
         <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 14, overflow: "hidden" }}>
